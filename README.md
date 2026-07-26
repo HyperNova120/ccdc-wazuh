@@ -1,1 +1,1 @@
-# ccdc-2027
+# ccdc-wazuh
