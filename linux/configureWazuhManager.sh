@@ -83,3 +83,16 @@ addActiveResponse() {
 replace_string "$CONF" "<logall>no</logall>" "<logall>yes</logall>"
 replace_string "$CONF" "<logall_json>no</logall_json>" "<logall_json>yes</logall_json>"
 sed -i '/module: wazuh/,/^[^ ]/ s/enabled: false/enabled: true/' /etc/filebeat/filebeat.yml
+
+configureSocFortressRules() {
+  curl -so ~/wazuh_socfortress_rules.sh https://raw.githubusercontent.com/socfortress/Wazuh-Rules/main/wazuh_socfortress_rules.sh && bash ~/wazuh_socfortress_rules.sh
+  local block="<decoder_exclude>ruleset/decoders/0040-auditd_decoders.xml</decoder_exclude>
+    "
+  local block2="<rule_exclude>0365-auditd_rules.xml</rule_exclude>
+    "
+  
+  insert_block_before_line "$block" "</ruleset>" "$CONF"
+  insert_block_before_line "$block2" "</ruleset>" "$CONF"
+}
+
+configureSocFortressRules 

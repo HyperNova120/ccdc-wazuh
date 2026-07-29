@@ -2,7 +2,6 @@
 CONF="/var/ossec/etc/ossec.conf"
 CONF_SEARCH="</ossec_config>"
 
-
 insert_block_before_line() {
   local block="$1"
   local search="$2"
@@ -57,114 +56,104 @@ replace_string() {
 # Universal package installer function for Linux
 # Usage: distro_install <package_name>
 distro_install() {
-    local pkg="$1"
+  local pkg="$1"
 
-    if [[ -z "$pkg" ]]; then
-        echo "Error: No package name provided." >&2
-        echo "Usage: distro_install <package_name>" >&2
-        return 1
-    }
+  if [[ -z "$pkg" ]]; then
+    echo "Error: No package name provided." >&2
+    echo "Usage: distro_install <package_name>" >&2
+    return 1
+  fi
 
-    if command -v apt-get &> /dev/null; then
-        sudo apt-get update && sudo apt-get install -y "$pkg"
-    elif command -v dnf &> /dev/null; then
-        sudo dnf install -y "$pkg"
-    elif command -v yum &> /dev/null; then
-        sudo yum install -y "$pkg"
-    elif command -v pacman &> /dev/null; then
-        sudo pacman -S --noconfirm "$pkg"
-    elif command -v zypper &> /dev/null; then
-        sudo zypper install -y "$pkg"
-    elif command -v apk &> /dev/null; then
-        sudo apk add "$pkg"
-    else
-        echo "Error: No supported package manager found (apt, dnf, yum, pacman, zypper, apk)." >&2
-        return 1
-    fi
+  if command -v apt-get &>/dev/null; then
+    sudo apt-get update && sudo apt-get install -y "$pkg"
+  elif command -v dnf &>/dev/null; then
+    sudo dnf install -y "$pkg"
+  elif command -v yum &>/dev/null; then
+    sudo yum install -y "$pkg"
+  elif command -v pacman &>/dev/null; then
+    sudo pacman -S --noconfirm "$pkg"
+  elif command -v zypper &>/dev/null; then
+    sudo zypper install -y "$pkg"
+  elif command -v apk &>/dev/null; then
+    sudo apk add "$pkg"
+  else
+    echo "Error: No supported package manager found (apt, dnf, yum, pacman, zypper, apk)." >&2
+    return 1
+  fi
 }
 
 # easy add log files
 # Usage: add_logfile <path> <log type>
 add_logfile() {
-    local path="$1"
-    local type="$2"
-    if [[ -z "$path" || -z "$type" ]]; then
-        echo "Error: No path or type provided" >&2
-        echo "Usage: add_logfile <path> <log type>" >&2
-        return 1
-    }
-    local block=" <localfile>
+  local path="$1"
+  local type="$2"
+  if [[ -z "$path" || -z "$type" ]]; then
+    echo "Error: No path or type provided" >&2
+    echo "Usage: add_logfile <path> <log type>" >&2
+    return 1
+  fi
+  local block="   <localfile>
       <log_format>$type</log_format>
       <location>$path</location>
     </localfile>
 "
-    insert_block_before_line "$block" "$CONF_SEARCH" "$CONF"
-  }
 
+  # Check if the exact block already exists in the file
+  if grep -qF "$block" "$CONF"; then
+    echo "[*] Logfile block for '$path' already exists. Skipping."
+    return 0
+  fi
+
+  insert_block_before_line "$block" "$CONF_SEARCH" "$CONF"
+}
 
 # easy add wordles
 add_wodle() {
-    local name="$1"
-    if [[ -z "$name" ]]; then
-        echo "Error: No path or type provided" >&2
-        echo "Usage: add_wodle <name>" >&2
-        return 1
-    }
-    local block=' <wodle name=\"$name\">
+  local name="$1"
+  if [[ -z "$name" ]]; then
+    echo "Error: No path or type provided" >&2
+    echo "Usage: add_wodle <name>" >&2
+    return 1
+  fi
+  local block="   <wodle name=\"$name\">
       <disabled>no</disabled>
     </wodle>
 
-'
-    insert_block_before_line "$block" "$CONF_SEARCH" "$CONF"
+"
+  # Check if the exact block already exists in the file
+  if grep -qF "$block" "$CONF"; then
+    echo "[*] Wodle block '$name' already exists. Skipping."
+    return 0
+  fi
+
+  insert_block_before_line "$block" "$CONF_SEARCH" "$CONF"
 }
 
-
 add_FIM_file() {
-    local path="$1"
-    local block="  <syscheck>
+  local path="$1"
+  local block="  <syscheck>
     <directories realtime=\"yes\">$path</directories>
   </syscheck>
   
   "
-    insert_block_before_line "$block" "$CONF_SEARCH" "$CONF"
+
+  # Check if the exact block already exists in the file
+  if grep -qF "$block" "$CONF"; then
+    echo "[*] FIM block for '$path' already exists. Skipping."
+    return 0
+  fi
+
+  insert_block_before_line "$block" "$CONF_SEARCH" "$CONF"
 }
-
-
-# here because wazuh relies on auditd for better visibility
-deploy_audit_rules() {
-    local rules_file="/etc/audit/rules.d/ccdc.rules"
-    cat << 'EOF' > "$rules_file"
--D
--b 8192
--f 1
-
-# Monitor critical files and persistence
--w /etc/passwd -p wa -k identity_change
--w /etc/shadow -p wa -k identity_change
--w /etc/sudoers -p wa -k privilege_escalation
--w /etc/crontab -p wa -k persistence
--w /etc/cron.d/ -p wa -k persistence
--w /root/.ssh/ -p wa -k unauthorized_keys
-EOF
-
-    # Load rules dynamically
-    if command -v augenrules &> /dev/null; then
-        augenrules --load
-    elif command -v auditctl &> /dev/null; then
-        auditctl -R "$rules_file"
-    fi
-}
-
-deploy_audit_rules
 
 # here because why not
 install_fail2ban() {
-    distro_install fail2ban
-    if systemctl list-unit-files | grep -q fail2ban; then
-        systemctl enable --now fail2ban
-        
-        # Write a quick basic jail configuration for SSH
-        cat << 'EOF' > /etc/fail2ban/jail.local
+  distro_install fail2ban
+  if systemctl list-unit-files | grep -q fail2ban; then
+    systemctl enable --now fail2ban
+
+    # Write a quick basic jail configuration for SSH
+    cat <<'EOF' >/etc/fail2ban/jail.local
 [sshd]
 enabled = true
 port = ssh
@@ -174,20 +163,16 @@ maxretry = 3
 bantime = 3600
 findtime = 600
 EOF
-        systemctl restart fail2ban
-    fi
+    systemctl restart fail2ban
+  fi
 }
 
 install_fail2ban
 
-
-
-
 #ensure logging is running
-if [[ command -v auditd ]]; then
-    distro_install auditd
-}
-
+if ! command -v auditd &>/dev/null; then
+  distro_install auditd
+fi
 
 add_logfile "/var/log/auditd/auditd.log" "audit"
 add_logfile "journald" "journald"
@@ -198,14 +183,11 @@ add_logfile "/var/log/syslog" "syslog"
 add_logfile "/var/log/messages" "syslog"
 add_logfile "/var/log/fail2ban.log" "syslog"
 
-
 add_wodle "docker-listener"
-
 
 # run checks every 30 mins
 replace_string "$CONF" "<frequency>43200</frequency>" "<frequency>1800</frequency>"
-replace_string "$CONF" "<interval>12h</interval>" "<inte>30m</interval>"
-
+replace_string "$CONF" "<interval>12h</interval>" "<interval>30m</interval>"
 
 add_FIM_file "/bin"
 add_FIM_file "/sbin"
@@ -215,7 +197,6 @@ add_FIM_file "/etc/passwd"
 add_FIM_file "/etc/shadow"
 add_FIM_file "/etc/sudoers"
 add_FIM_file "/etc/sudoers.d"
-add_FIM_file "/var/www/html"
 add_FIM_file "/etc/crontab"
 add_FIM_file "/etc/cron.d"
 add_FIM_file "/etc/cron.hourly"
@@ -226,6 +207,7 @@ add_FIM_file "/etc/init.d"
 add_FIM_file "/etc/systemd/system"
 add_FIM_file "/root/.ssh"
 add_FIM_file "/home/*/.ssh"
-
+add_FIM_file "/var/www"
+add_FIM_file "/var/ossec/etc"
 
 systemctl restart wazuh-agent
