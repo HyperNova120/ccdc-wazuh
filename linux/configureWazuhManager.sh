@@ -8,6 +8,12 @@ insert_block_before_line() {
   local search="$2"
   local file="$3"
 
+  # Check if the exact block already exists in the file
+  if grep -qF "$block" "$CONF"; then
+    echo "[*] Logfile block for '$path' already exists. Skipping."
+    return 0
+  fi
+
   awk -v block="$block" -v search="$search" '
         BEGIN { inserted = 0 }
         {
@@ -76,6 +82,13 @@ addActiveResponse() {
       <rules_id>$ruleIDs</rules_id>
     </active-response>
   "
+
+  # Check if the exact block already exists in the file
+  if grep -qF "$block" "$CONF"; then
+    echo "[*] Logfile block for '$path' already exists. Skipping."
+    return 0
+  fi
+
 
   insert_block_before_line "$block" "$CONF_SEARCH" "$CONF"
 }
